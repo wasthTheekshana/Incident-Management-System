@@ -32,14 +32,20 @@ Outgoing mail needs an SMTP server. For a local inbox:
 ## Tests
 
 ```bash
-cd backend && npm test      # SLA calculation, stage workflow, field validation, file signatures, export safety
+cd backend && npm test           # unit: SLA maths, stage workflow, field validation, file signatures, export formats
 cd frontend && npm test
+cd backend && npm run test:e2e   # 50 end-to-end API checks; needs the API running on a migrated + seeded database
 ```
 
-## Deploy
+CI (`.github/workflows/ci.yml`) runs all of the above plus type-checks and builds on every push.
 
-See `docker-compose.prod.yml` and `.env.prod.example`. Put a TLS-terminating proxy (TLS ≥ 1.2) in front of `web`.
-Migrations run as a separate `migrate` step before the API starts.
+## Deploy and operate
+
+See [docs/operations.md](docs/operations.md): first deployment, HTTPS, daily backups and restore (`scripts/`),
+upgrades and monitoring. `docker-compose.prod.yml` and `.env.prod.example` define the stack. Put a TLS-terminating
+proxy (TLS ≥ 1.2) in front of `web`; migrations run as a separate step before the API starts.
+
+Security controls: [docs/security.md](docs/security.md). Dependency advisories: [docs/dependency-audit.md](docs/dependency-audit.md).
 
 ## Layout
 

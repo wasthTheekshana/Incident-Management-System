@@ -1,0 +1,4 @@
+# Keep LF everywhere: shell scripts, Dockerfiles and nginx config must not pick up CRLF on Windows checkouts.
+* text=auto eol=lf
+*.docx binary
+*.png binary

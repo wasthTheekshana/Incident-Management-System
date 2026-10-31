@@ -1,10 +1,16 @@
 /**
- * Idempotent bootstrap data: the two SRS companies, FR-17 SLA defaults, notification rules and a Super Admin.
+ * Idempotent bootstrap data: the two SRS companies, FR-17 SLA defaults, default root causes and (optionally) a
+ * Super Admin. Plain JavaScript on purpose so it runs inside the production image, which has no TypeScript tooling:
+ *
+ *   node prisma/seed.js                                   # reference data only
+ *   SEED_ADMIN_EMAIL=you@company.com node prisma/seed.js # also create the first Super Admin
+ *
  * The Super Admin password comes from SEED_ADMIN_PASSWORD; if unset a random one is generated and printed once.
+ * Either way the account must change it at first login.
  */
-import { PrismaClient } from '@prisma/client';
-import * as argon2 from 'argon2';
-import { randomBytes } from 'crypto';
+const { PrismaClient } = require('@prisma/client');
+const argon2 = require('argon2');
+const { randomBytes } = require('crypto');
 
 const prisma = new PrismaClient();
 
@@ -13,7 +19,7 @@ const SLA = [
   { priority: 'P2', responseMinutes: 30, resolutionMinutes: 480 },
   { priority: 'P3', responseMinutes: 120, resolutionMinutes: 2880 },
   { priority: 'P4', responseMinutes: 240, resolutionMinutes: 7200 },
-] as const;
+];
 
 const COMPANIES = [
   { name: 'AB Securitas (Pvt) Ltd', code: 'ABS' },
@@ -22,7 +28,7 @@ const COMPANIES = [
 
 const ROOT_CAUSES = ['Hardware failure', 'Software defect', 'Configuration error', 'Network issue', 'User error', 'Third-party / vendor'];
 
-async function main(): Promise<void> {
+async function main() {
   for (const row of SLA) {
     await prisma.prioritySLA.upsert({ where: { priority: row.priority }, update: {}, create: row });
   }
@@ -44,7 +50,7 @@ async function main(): Promise<void> {
   }
 
   // `||` not `??`: an empty SEED_ADMIN_PASSWORD (as in .env.example) must never become the password.
-  const provided = process.env.SEED_ADMIN_PASSWORD?.trim();
+  const provided = (process.env.SEED_ADMIN_PASSWORD ?? '').trim();
   const password = provided || `${randomBytes(9).toString('base64url')}a1`;
   const companies = await prisma.company.findMany({ select: { id: true } });
   await prisma.user.create({

@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cims
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: cims
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cims" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: development
+      PORT: "3000"
+      DATABASE_URL: postgresql://cims:ci_password@localhost:5432/cims?schema=public
+      REDIS_URL: redis://localhost:6379
+      APP_URL: http://localhost:5173
+      CORS_ORIGIN: http://localhost:5173
+      COOKIE_SECURE: "false"
+      UPLOAD_DIR: ./storage/uploads
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_FROM: "CIMS <ci@example.com>"
+      SEED_ADMIN_EMAIL: admin@cims.local
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      # `npm install`, not `npm ci`: a lockfile written on Windows lacks optional wasm packages that jest pulls in
+      # on Linux (npm/cli#4828), which makes `npm ci` reject it. Pinned versions in the lockfile are still honoured.
+      - run: npm install --no-audit --no-fund
+      - run: npx prisma generate
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test -- --ci
+      - name: Build
+        run: npm run build
+      - name: Apply migrations and seed
+        run: |
+          npx prisma migrate deploy
+          npm run seed
+      - name: Start API
+        run: |
+          node dist/main > api.log 2>&1 &
+          for i in $(seq 1 30); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/auth/me)" = "401" ] && exit 0
+            sleep 2
+          done
+          cat api.log; exit 1
+      - name: End-to-end API tests
+        run: npm run test:e2e
+      - name: Show API log on failure
+        if: failure()
+        run: tail -n 100 api.log
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm install --no-audit --no-fund
+      - name: Type-check and build
+        run: npm run build
+      - name: Unit tests
+        run: npm test
+
+  audit:
+    # Reported, not blocking: the remaining advisories are documented in docs/dependency-audit.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: cd backend && npm audit --omit=dev
+      - run: cd frontend && npm audit --omit=dev

@@ -19,6 +19,9 @@
 
 ## Known gaps / to confirm before go-live
 
-- Backups (NFR-9), monitoring and the TLS proxy are deployment tasks, not application code.
-- Dependency audit (`npm audit`) and a penetration test should be run before UAT.
+- Backup, restore and restore-test scripts exist (`scripts/`, see [operations.md](operations.md)); scheduling them,
+  copying backups off the host, monitoring and the TLS proxy are still deployment tasks on the target server.
+- Dependencies were audited (see [dependency-audit.md](dependency-audit.md)): 3 patched, the remainder documented as
+  not reachable. A penetration test by an independent party is still recommended before UAT.
+- Production Docker images have not been built end to end yet (Docker Desktop storage fault on the dev machine).
 - Retention (≥ 3 years) is satisfied by never deleting incident data; an archival policy is still to be agreed.
