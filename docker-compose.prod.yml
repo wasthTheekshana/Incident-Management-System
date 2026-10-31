@@ -1,0 +1,74 @@
+# Production stack. Secrets come from an untracked .env file next to this one (see .env.prod.example).
+# Put a TLS-terminating reverse proxy (HTTPS, TLS >= 1.2: NFR-1) in front of `web`; only `web` is reachable.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cims
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: cims
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [internal]
+    deploy: { resources: { limits: { cpus: "1.0", memory: 1g } } }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    networks: [internal]
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256m } } }
+
+  migrate:
+    build: ./backend
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://cims:${POSTGRES_PASSWORD}@postgres:5432/cims?schema=public
+    depends_on: [postgres]
+    networks: [internal]
+    restart: "no"
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://cims:${POSTGRES_PASSWORD}@postgres:5432/cims?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      APP_URL: ${APP_URL:?set APP_URL}
+      CORS_ORIGIN: ${APP_URL}
+      COOKIE_SECURE: "true"
+      UPLOAD_DIR: /data/uploads
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM}
+    volumes: [uploads:/data/uploads]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_started }
+    networks: [internal]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    deploy: { resources: { limits: { cpus: "1.0", memory: 768m } } }
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [api]
+    ports: ["127.0.0.1:8080:80"]   # bind to loopback; the TLS proxy forwards here
+    networks: [internal]
+    deploy: { resources: { limits: { cpus: "0.5", memory: 128m } } }
+
+networks:
+  internal:
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

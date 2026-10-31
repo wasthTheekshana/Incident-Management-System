@@ -1,0 +1,352 @@
+// CIMS Phase 1 data model (SRS-2026-CIMS-P1 §6.2).
+// All timestamps are UTC; display conversion to Asia/Colombo is a client concern (NFR-11).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+enum Priority {
+  P1
+  P2
+  P3
+  P4
+}
+
+enum Stage {
+  NEW
+  ASSIGNED
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum FieldType {
+  SHORT_TEXT
+  LONG_TEXT
+  NUMBER
+  DATETIME
+  DROPDOWN
+  CHECKBOX
+}
+
+enum NotificationEvent {
+  INCIDENT_CREATED
+  ASSIGNED
+  STAGE_CHANGED
+  SLA_DUE_SOON
+  SLA_BREACHED
+  RESOLVER_ASSIGNED
+}
+
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Company {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  code                String   @unique
+  active              Boolean  @default(true)
+  responsiblePersonId String?
+  backupPersonId      String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  responsiblePerson User?            @relation("CompanyResponsible", fields: [responsiblePersonId], references: [id])
+  backupPerson      User?            @relation("CompanyBackup", fields: [backupPersonId], references: [id])
+  users             UserCompany[]
+  templates         TemplateCompany[]
+  incidents         Incident[]
+  rootCauses        RootCause[]
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  name                String
+  email               String    @unique
+  phone               String?
+  role                Role
+  passwordHash        String
+  mustChangePassword  Boolean   @default(true)
+  active              Boolean   @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  companies          UserCompany[]
+  sessions           Session[]
+  resetTokens        PasswordResetToken[]
+  responsibleFor     Company[]            @relation("CompanyResponsible")
+  backupFor          Company[]            @relation("CompanyBackup")
+  reported           Incident[]           @relation("IncidentReporter")
+  assigned           Incident[]           @relation("IncidentAssignee")
+  resolving          Incident[]           @relation("IncidentResolver")
+  comments           Comment[]
+  history            IncidentHistory[]
+  notifications      Notification[]
+  attachments        Attachment[]
+}
+
+model UserCompany {
+  userId    String
+  companyId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, companyId])
+  @@index([companyId])
+}
+
+// Server-side session: lets us enforce idle timeout (FR-3) and revoke on deactivation.
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  tokenHash    String   @unique
+  lastActiveAt DateTime @default(now())
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model IncidentTemplate {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  defaultCategory String?
+  defaultPriority Priority @default(P3)
+  version         Int      @default(1)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  fields    TemplateField[]
+  companies TemplateCompany[]
+  incidents Incident[]
+}
+
+// Fields are immutable per version; editing a template bumps version and writes new rows (FR-12).
+model TemplateField {
+  id         String    @id @default(uuid())
+  templateId String
+  version    Int
+  key        String
+  label      String
+  type       FieldType
+  options    Json?
+  mandatory  Boolean   @default(false)
+  order      Int
+
+  template IncidentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, version, key])
+  @@index([templateId, version])
+}
+
+model TemplateCompany {
+  templateId String
+  companyId  String
+
+  template IncidentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  company  Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, companyId])
+}
+
+model PrioritySLA {
+  priority          Priority @id
+  responseMinutes   Int
+  resolutionMinutes Int
+  updatedAt         DateTime @updatedAt
+}
+
+model RootCause {
+  id        String  @id @default(uuid())
+  name      String
+  companyId String?
+  active    Boolean @default(true)
+
+  company   Company?   @relation(fields: [companyId], references: [id])
+  incidents Incident[]
+
+  @@index([companyId])
+}
+
+model IncidentSequence {
+  year    Int @id
+  lastSeq Int @default(0)
+}
+
+model Incident {
+  id                 String    @id @default(uuid())
+  number             String    @unique
+  companyId          String
+  templateId         String
+  templateVersion    Int
+  title              String
+  description        String
+  fieldValues        Json      @default("{}")
+  priority           Priority
+  stage              Stage     @default(NEW)
+  reporterId         String
+  assigneeId         String?
+  resolverId         String?
+  responseDueAt      DateTime
+  resolutionDueAt    DateTime
+  respondedAt        DateTime?
+  resolvedAt         DateTime?
+  closedAt           DateTime?
+  pausedAt           DateTime?
+  slaPausedMinutes   Int       @default(0)
+  responseDueSoonNotified   Boolean @default(false)
+  responseBreachNotified    Boolean @default(false)
+  resolutionDueSoonNotified Boolean @default(false)
+  resolutionBreachNotified  Boolean @default(false)
+  rootCauseId        String?
+  rootCauseText      String?
+  correctiveAction   String?
+  resolutionNotes    String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  company     Company          @relation(fields: [companyId], references: [id])
+  template    IncidentTemplate @relation(fields: [templateId], references: [id])
+  reporter    User             @relation("IncidentReporter", fields: [reporterId], references: [id])
+  assignee    User?            @relation("IncidentAssignee", fields: [assigneeId], references: [id])
+  resolver    User?            @relation("IncidentResolver", fields: [resolverId], references: [id])
+  rootCause   RootCause?       @relation(fields: [rootCauseId], references: [id])
+  attachments Attachment[]
+  comments    Comment[]
+  history     IncidentHistory[]
+  notifications Notification[]
+
+  @@index([companyId, stage])
+  @@index([assigneeId])
+  @@index([reporterId])
+  @@index([createdAt])
+  @@index([stage, resolutionDueAt])
+}
+
+model Attachment {
+  id         String   @id @default(uuid())
+  incidentId String
+  fileName   String
+  fileType   String
+  size       Int
+  storageKey String   @unique
+  uploadedBy String
+  uploadedAt DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  uploader User     @relation(fields: [uploadedBy], references: [id])
+
+  @@index([incidentId])
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  incidentId String
+  authorId   String
+  body       String
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id])
+
+  @@index([incidentId, createdAt])
+}
+
+// Append-only audit trail (FR-33). Application code never updates or deletes rows.
+model IncidentHistory {
+  id         String   @id @default(uuid())
+  incidentId String
+  userId     String?
+  action     String
+  field      String?
+  oldValue   String?
+  newValue   String?
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@index([incidentId, createdAt])
+}
+
+model Notification {
+  id          String              @id @default(uuid())
+  incidentId  String?
+  recipientId String
+  event       NotificationEvent
+  channel     NotificationChannel
+  subject     String
+  body        String
+  status      NotificationStatus  @default(PENDING)
+  readAt      DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime            @default(now())
+
+  incident  Incident? @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  recipient User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt])
+  @@index([status])
+}
+
+// Which groups receive which event (FR-25). One row per event/audience.
+model NotificationRule {
+  id       String            @id @default(uuid())
+  event    NotificationEvent
+  audience String // REPORTER | ASSIGNEE | RESOLVER | COMPANY_ADMINS
+  enabled  Boolean           @default(true)
+
+  @@unique([event, audience])
+}
+
+model EmailTemplate {
+  event   NotificationEvent @id
+  subject String
+  body    String
+}
+
+model Setting {
+  key   String @id
+  value String
+}

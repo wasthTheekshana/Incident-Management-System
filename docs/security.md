@@ -1,0 +1,24 @@
+# Security controls and where they live
+
+| Concern | Control | Location |
+|---|---|---|
+| Passwords (NFR-2) | argon2id; ≥8 chars with letters + digits; random temporary passwords; forced change at first login | `auth/password.service.ts` |
+| Brute force (NFR-2) | 5 failures → 15-minute lock; per-route throttling (10/min on auth routes, 300/min global); lock/inactive/unknown all return the same message; dummy hash verify equalises timing | `auth/auth.service.ts`, `app.module.ts` |
+| Sessions (FR-3) | 256-bit random token, only its SHA-256 stored; `HttpOnly`, `SameSite=Strict`, `Secure` in production; idle timeout (configurable) + 12 h absolute; revoked on deactivate / password change | `common/session.guard.ts` |
+| CSRF | SameSite=Strict cookie + Origin check on state-changing requests + JSON-only API | `main.ts` |
+| Access control (NFR-3) | Global session guard → role guard → `AccessPolicy` scoping every query; out-of-scope records return 404, not 403 | `common/*`, `incidents/incident-loader.service.ts` |
+| Input validation | Global `ValidationPipe` (whitelist + forbidNonWhitelisted); template field values validated server-side against the template version; unknown keys rejected | `main.ts`, `templates/field-values.validator.ts` |
+| Injection | Prisma parameterised queries only; no raw SQL; emails are plain text with substitution only; UI renders user text as text, never HTML | – |
+| Uploads (NFR-4) | Type from file *content* (magic bytes), extension must agree, size/count limits, random server-side names, stored outside web root, authorised streaming download with `nosniff` + forced attachment | `attachments/*` |
+| Export | Same visibility filter as the list; formula-injection neutralised (`= + - @`) | `incidents/incident-export.service.ts` |
+| Audit (FR-33) | Append-only history written in the same transaction as the change | `incidents/incident-history.service.ts` |
+| Transport (NFR-1) | HSTS, CSP, `X-Frame-Options`, `nosniff` headers; production refuses to start with `COOKIE_SECURE=false` | `frontend/nginx.conf`, `config/env.validation.ts` |
+| Secrets | Env-only, validated at boot, `.env` git-ignored; seed never hardcodes a password | `.env.example` |
+| Containers | Non-root user, read-only root FS, all capabilities dropped, resource limits, internal network, only `web` published (loopback) | `docker-compose.prod.yml` |
+| Account enumeration | Forgot-password always answers identically; reset tokens are single-use, hashed, 30-minute expiry | `auth/auth.service.ts` |
+
+## Known gaps / to confirm before go-live
+
+- Backups (NFR-9), monitoring and the TLS proxy are deployment tasks, not application code.
+- Dependency audit (`npm audit`) and a penetration test should be run before UAT.
+- Retention (≥ 3 years) is satisfied by never deleting incident data; an archival policy is still to be agreed.
