@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { api, ApiError, download } from '../api/client';
-import type { IncidentDetail } from '../api/types';
+import type { IncidentDetail, Stage } from '../api/types';
 import { PriorityBadge, SlaBadge, StageBadge } from '../components/Badges';
 import { IncidentActions } from '../components/IncidentActions';
-import { formatBytes, formatDateTime } from '../lib/format';
+import { formatBytes, formatDateTime, STAGE_LABEL } from '../lib/format';
 
 const HISTORY_LABEL: Record<string, string> = {
   CREATED: 'Incident created',
@@ -166,7 +166,7 @@ export function IncidentDetailPage() {
                 <li key={h.id}>
                   <strong>{HISTORY_LABEL[h.action] ?? h.action}</strong>
                   {h.field && h.action !== 'COMMENTED' && h.action !== 'ATTACHMENT_ADDED' && (
-                    <span className="muted"> · {h.oldValue ?? '—'} → {h.newValue ?? '—'}</span>
+                    <span className="muted"> · {historyValue(h.field, h.oldValue)} → {historyValue(h.field, h.newValue)}</span>
                   )}
                   <div className="muted">{h.user?.name ?? 'System'} · {formatDateTime(h.createdAt)}</div>
                 </li>
@@ -177,6 +177,12 @@ export function IncidentDetailPage() {
       </div>
     </>
   );
+}
+
+/** Stage values are stored as enum names; show the same labels as everywhere else in the UI. */
+function historyValue(field: string | null, value: string | null): string {
+  if (!value) return '—';
+  return field === 'stage' && value in STAGE_LABEL ? STAGE_LABEL[value as Stage] : value;
 }
 
 function FieldRow({ label, value }: { label: string; value: string | number | boolean | undefined }) {

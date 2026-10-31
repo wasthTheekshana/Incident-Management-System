@@ -36,7 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 60_000,
     queryFn: async () => {
       try {
-        return await api<Me>('/auth/me');
+        // A 401 here just means "not signed in": it must not trigger the lost-session reset below.
+        return await api<Me>('/auth/me', { ignoreUnauthorized: true });
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) return null;
         throw e;
@@ -68,7 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearSession = useCallback(() => {
-    queryClient.clear();
+    // Drop all cached data except the `me` query itself, which is set to "signed out" rather than destroyed.
+    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
     queryClient.setQueryData(['me'], null);
     setActiveId(null);
     try {

@@ -103,8 +103,12 @@ dl.facts dd { margin: 0; }
 
 /* NFR-10: usable on tablet / mobile browsers */
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
-  .sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 8px; }
+  /* Nav row sized to its content; without this the spare viewport height stretches it. */
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  /* One scrollable row instead of wrapping into several lines that push the content off-screen. */
+  .sidebar { flex-direction: row; flex-wrap: nowrap; align-items: center; padding: 6px 8px; overflow-x: auto; gap: 2px; }
+  .sidebar a, .sidebar button.link { white-space: nowrap; padding: 8px 10px; }
+  .sidebar .brand { padding: 4px 8px; }
   .sidebar .section, .sidebar .spacer { display: none; }
   .main { padding: 16px; }
   .grid.cols-2, .grid.cols-4 { grid-template-columns: 1fr; }

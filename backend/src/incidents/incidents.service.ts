@@ -149,6 +149,7 @@ export class IncidentsService {
     const windows = await this.sla.getAll();
     return {
       ...incident,
+      history: await this.withReadableReferences(incident.history),
       templateFields,
       slaStatus: this.slaStatusFor(incident, windows, new Date()),
       permissions: this.permissionsFor(user, incident),
@@ -168,6 +169,27 @@ export class IncidentsService {
       count({ OR: [{ assigneeId: user.id }, { resolverId: user.id }] }),
     ]);
     return { reported, assigned };
+  }
+
+  /**
+   * History stores ids for assignee/resolver/root-cause changes so the audit trail stays exact.
+   * For display they are swapped for names; an id that no longer resolves (or free text) is left as is.
+   */
+  private async withReadableReferences<T extends { field: string | null; oldValue: string | null; newValue: string | null }>(rows: T[]): Promise<T[]> {
+    const isReference = (field: string | null) => field === 'assignee' || field === 'resolver' || field === 'rootCause';
+    const ids = new Set<string>();
+    for (const row of rows) {
+      if (isReference(row.field)) [row.oldValue, row.newValue].forEach((v) => v && ids.add(v));
+    }
+    if (!ids.size) return rows;
+
+    const [users, causes] = await Promise.all([
+      this.prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true } }),
+      this.prisma.rootCause.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true } }),
+    ]);
+    const names = new Map([...users, ...causes].map((x) => [x.id, x.name]));
+    const label = (value: string | null) => (value ? (names.get(value) ?? value) : null);
+    return rows.map((row) => (isReference(row.field) ? { ...row, oldValue: label(row.oldValue), newValue: label(row.newValue) } : row));
   }
 
   /** Shared by the list and the export so both always apply identical visibility and filters (NFR-3). */
