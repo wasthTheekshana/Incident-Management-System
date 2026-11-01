@@ -120,3 +120,52 @@ export interface NotificationConfigRow {
   audiences: string[];
   template: { subject: string; body: string };
 }
+
+export interface DashboardData {
+  range: { days: number; from: string; to: string };
+  kpis: {
+    open: number;
+    breached: number;
+    dueSoon: number;
+    unassigned: number;
+    created: number;
+    createdPrevious: number;
+    resolved: number;
+    slaCompliance: number | null;
+    avgResolutionMinutes: number | null;
+    avgResponseMinutes: number | null;
+  };
+  trend: { date: string; created: number; resolved: number }[];
+  byStage: Record<Stage, number>;
+  openByPriority: Record<Priority, number>;
+  byCompany: { id: string; name: string; open: number; created: number; breached: number }[];
+  topRootCauses: { name: string; count: number }[];
+  topTemplates: { name: string; count: number }[];
+  workload: { id: string; name: string; open: number; breached: number }[];
+  attention: {
+    id: string;
+    number: string;
+    title: string;
+    priority: Priority;
+    stage: Stage;
+    slaStatus: SlaStatus;
+    company: string;
+    assignee: string | null;
+    resolutionDueAt: string;
+  }[];
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  actorId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  action: string;
+  summary: string;
+  entityType: string | null;
+  entityId: string | null;
+  companyIds: string[];
+  ip: string | null;
+  metadata: { changes?: Record<string, string | number | boolean>; reason?: string } | null;
+}

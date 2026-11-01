@@ -45,7 +45,7 @@ export function MyIncidentsPage() {
       <div className="topbar">
         <div>
           <h1>My Incidents</h1>
-          <span className="muted">{activeCompany?.name}</span>
+          <span className="muted">{activeCompany?.name ?? 'All companies'}</span>
         </div>
         <Link className="btn" to="/report">Report incident</Link>
       </div>
@@ -59,19 +59,19 @@ export function MyIncidentsPage() {
 
       <h2>Assigned to me</h2>
       <div className="table-wrap">
-        <table>
+        <table className="stack-table">
           <thead>
             <tr><th>Number</th><th>Title</th><th>Priority</th><th>Stage</th><th>Resolution due</th><th>SLA</th></tr>
           </thead>
           <tbody>
             {assigned.data?.items.map((i) => (
               <tr key={i.id}>
-                <td><Link to={`/incidents/${i.id}`}>{i.number}</Link></td>
-                <td>{i.title}</td>
-                <td><PriorityBadge priority={i.priority} /></td>
-                <td><StageBadge stage={i.stage} /></td>
-                <td>{formatDateTime(i.resolutionDueAt)}</td>
-                <td><SlaBadge status={i.slaStatus} /></td>
+                <td data-label="Number"><Link to={`/incidents/${i.id}`}>{i.number}</Link></td>
+                <td data-label="Title">{i.title}</td>
+                <td data-label="Priority"><PriorityBadge priority={i.priority} /></td>
+                <td data-label="Stage"><StageBadge stage={i.stage} /></td>
+                <td data-label="Resolution due">{formatDateTime(i.resolutionDueAt)}</td>
+                <td data-label="SLA"><SlaBadge status={i.slaStatus} /></td>
               </tr>
             ))}
             {assigned.data?.items.length === 0 && (

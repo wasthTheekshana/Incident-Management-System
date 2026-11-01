@@ -12,7 +12,7 @@ export function RequireAuth() {
   if (!me) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (me.mustChangePassword && location.pathname !== '/change-password') return <Navigate to="/change-password" replace />;
 
-  const needsCompany = !me.mustChangePassword && companies.length > 1 && !activeCompany;
+  const needsCompany = !me.mustChangePassword && companies.length > 1 && !activeCompany && me.role !== 'SUPER_ADMIN';
   if (needsCompany && location.pathname !== '/select-company') return <Navigate to="/select-company" replace />;
 
   return <Outlet />;

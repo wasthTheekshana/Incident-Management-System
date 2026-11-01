@@ -45,14 +45,15 @@ export function IncidentListPage() {
     queryFn: () => api<Paged<IncidentListItem>>('/incidents', { query: { ...query, page, pageSize: PAGE_SIZE } }),
   });
   const templates = useQuery({
-    queryKey: ['templates', 'available', companyId],
-    queryFn: () => api<Template[]>('/templates/available', { query: { companyId } }),
-    enabled: !!companyId,
+    queryKey: ['templates', 'filter', companyId, admin],
+    // One company: the templates its users can report with. All companies (admins only): every template.
+    queryFn: () => (companyId ? api<Template[]>('/templates/available', { query: { companyId } }) : api<Template[]>('/templates')),
+    enabled: !!companyId || admin,
   });
   const users = useQuery({
     queryKey: ['users', companyId],
     queryFn: () => api<UserRow[]>('/users', { query: { companyId } }),
-    enabled: admin && !!companyId,
+    enabled: admin,
   });
 
   const set = (key: keyof Filters) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -108,7 +109,7 @@ export function IncidentListPage() {
       </form>
 
       <div className="table-wrap">
-        <table>
+        <table className="stack-table">
           <thead>
             <tr>
               <th>Number</th><th>Title</th><th>Company</th><th>Template</th><th>Priority</th>
@@ -118,15 +119,15 @@ export function IncidentListPage() {
           <tbody>
             {list.data?.items.map((i) => (
               <tr key={i.id} className="clickable" onClick={() => navigate(`/incidents/${i.id}`)}>
-                <td><Link to={`/incidents/${i.id}`} onClick={(e) => e.stopPropagation()}>{i.number}</Link></td>
-                <td>{i.title}</td>
-                <td>{i.company.code}</td>
-                <td>{i.template.name}</td>
-                <td><PriorityBadge priority={i.priority} /></td>
-                <td><StageBadge stage={i.stage} /></td>
-                <td>{i.assignee?.name ?? <span className="muted">Unassigned</span>}</td>
-                <td>{formatDateTime(i.createdAt)}</td>
-                <td><SlaBadge status={i.slaStatus} /></td>
+                <td data-label="Number"><Link to={`/incidents/${i.id}`} onClick={(e) => e.stopPropagation()}>{i.number}</Link></td>
+                <td data-label="Title">{i.title}</td>
+                <td data-label="Company">{i.company.code}</td>
+                <td data-label="Template">{i.template.name}</td>
+                <td data-label="Priority"><PriorityBadge priority={i.priority} /></td>
+                <td data-label="Stage"><StageBadge stage={i.stage} /></td>
+                <td data-label="Assignee">{i.assignee?.name ?? <span className="muted">Unassigned</span>}</td>
+                <td data-label="Created">{formatDateTime(i.createdAt)}</td>
+                <td data-label="SLA"><SlaBadge status={i.slaStatus} /></td>
               </tr>
             ))}
             {list.data?.items.length === 0 && <tr><td colSpan={9} className="muted">No incidents match.</td></tr>}

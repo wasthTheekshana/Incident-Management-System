@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AppNotification } from '../api/types';
 import { formatDateTime } from '../lib/format';
+import { Icon } from './Icon';
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -26,8 +27,8 @@ export function NotificationBell() {
 
   return (
     <div className="bell">
-      <button className="secondary small" onClick={() => setOpen((o) => !o)} aria-label="Notifications">
-        🔔{!!count.data?.count && <span className="count">{count.data.count}</span>}
+      <button onClick={() => setOpen((o) => !o)} aria-label="Notifications">
+        <Icon name="bell" />{!!count.data?.count && <span className="count">{count.data.count}</span>}
       </button>
       {open && (
         <div className="dropdown">

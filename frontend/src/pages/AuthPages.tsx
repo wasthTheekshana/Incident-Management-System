@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { BrandMark } from '../components/Icon';
 
 const messageOf = (e: unknown) => (e instanceof ApiError ? e.message : 'Something went wrong. Please try again.');
 
@@ -9,8 +10,14 @@ function AuthCard({ title, children }: { title: string; children: React.ReactNod
   return (
     <div className="auth-wrap">
       <div className="card auth-card">
+        <div className="brand">
+          <BrandMark size={34} />
+          <div>
+            <div className="brand-name">CIMS</div>
+            <div className="brand-sub">Centralized Incident Management System</div>
+          </div>
+        </div>
         <h1>{title}</h1>
-        <p className="muted">Centralized Incident Management System</p>
         {children}
       </div>
     </div>

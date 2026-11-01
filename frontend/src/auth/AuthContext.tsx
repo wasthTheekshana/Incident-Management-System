@@ -10,7 +10,7 @@ interface AuthState {
   loading: boolean;
   companies: Company[];
   activeCompany: Company | null;
-  selectCompany: (id: string) => void;
+  selectCompany: (id: string | null) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -55,14 +55,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // FR-9: a user mapped to one company has it selected automatically.
   const activeCompany = useMemo(
-    () => companies.find((c) => c.id === activeId) ?? (companies.length === 1 ? companies[0] : null),
-    [companies, activeId],
+    () =>
+      companies.find((c) => c.id === activeId) ??
+      // The Super Admin sees every company by default (activeCompany null = all) and may narrow to one.
+      (companies.length === 1 && me?.role !== 'SUPER_ADMIN' ? companies[0] : null),
+    [companies, activeId, me?.role],
   );
 
-  const selectCompany = useCallback((id: string) => {
+  const selectCompany = useCallback((id: string | null) => {
     setActiveId(id);
     try {
-      sessionStorage.setItem(COMPANY_KEY, id);
+      if (id) sessionStorage.setItem(COMPANY_KEY, id);
+      else sessionStorage.removeItem(COMPANY_KEY);
     } catch {
       /* storage unavailable: the selection simply isn't remembered across reloads */
     }

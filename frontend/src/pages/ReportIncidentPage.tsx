@@ -13,7 +13,10 @@ type Value = string | number | boolean | undefined;
 export function ReportIncidentPage() {
   const { activeCompany } = useAuth();
   const navigate = useNavigate();
-  const companyId = activeCompany?.id;
+  const { companies } = useAuth();
+  // With no active company (Super Admin viewing all) the reporter picks the company here.
+  const [pickedCompany, setPickedCompany] = useState('');
+  const companyId = activeCompany?.id ?? (pickedCompany || undefined);
 
   const templates = useQuery({
     queryKey: ['templates', 'available', companyId],
@@ -82,7 +85,17 @@ export function ReportIncidentPage() {
   return (
     <>
       <h1>Report an incident</h1>
-      <p className="muted">{activeCompany?.name}</p>
+      {activeCompany ? (
+        <p className="muted">{activeCompany.name}</p>
+      ) : (
+        <div className="field">
+          <label htmlFor="company">Company</label>
+          <select id="company" value={pickedCompany} onChange={(e) => { setPickedCompany(e.target.value); setTemplateId(''); setValues({}); }}>
+            <option value="">Select a company…</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
 
       <form className="card" onSubmit={submit}>
         <div className="field">

@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { isAdminRole, useAuth } from './auth/AuthContext';
 import { Layout } from './components/Layout';
 import { RequireAuth, RequireRole } from './components/guards';
 import { ChangePasswordPage, ForgotPasswordPage, LoginPage, ResetPasswordPage } from './pages/AuthPages';
@@ -14,9 +15,17 @@ import { IncidentDetailPage } from './pages/IncidentDetailPage';
 import { IncidentListPage } from './pages/IncidentListPage';
 import { MyIncidentsPage } from './pages/MyIncidentsPage';
 import { ReportIncidentPage } from './pages/ReportIncidentPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { AuditLogPage } from './pages/AuditLogPage';
 import { SelectCompanyPage } from './pages/SelectCompanyPage';
 
 const ADMINS = ['SUPER_ADMIN', 'ADMIN'] as const;
+/** Admins land on the dashboard; plain users on their own incidents. */
+function Home() {
+  const { me } = useAuth();
+  return isAdminRole(me) ? <DashboardPage /> : <MyIncidentsPage />;
+}
+
 const SUPER = ['SUPER_ADMIN'] as const;
 
 export function App() {
@@ -30,7 +39,8 @@ export function App() {
         <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/select-company" element={<SelectCompanyPage />} />
         <Route element={<Layout />}>
-          <Route index element={<MyIncidentsPage />} />
+          <Route index element={<Home />} />
+          <Route path="my" element={<MyIncidentsPage />} />
           <Route path="incidents" element={<IncidentListPage />} />
           <Route path="incidents/:id" element={<IncidentDetailPage />} />
           <Route path="report" element={<ReportIncidentPage />} />
@@ -41,6 +51,7 @@ export function App() {
           <Route path="admin/templates/:id" element={<RequireRole roles={[...ADMINS]}><TemplateEditorPage /></RequireRole>} />
           <Route path="admin/root-causes" element={<RequireRole roles={[...ADMINS]}><RootCausesAdminPage /></RequireRole>} />
           <Route path="admin/companies" element={<RequireRole roles={[...ADMINS]}><CompaniesAdminPage /></RequireRole>} />
+          <Route path="admin/audit" element={<RequireRole roles={[...ADMINS]}><AuditLogPage /></RequireRole>} />
           <Route path="admin/sla" element={<RequireRole roles={[...SUPER]}><SlaAdminPage /></RequireRole>} />
           <Route path="admin/notifications" element={<RequireRole roles={[...SUPER]}><NotificationSettingsPage /></RequireRole>} />
           <Route path="admin/settings" element={<RequireRole roles={[...SUPER]}><SettingsPage /></RequireRole>} />
