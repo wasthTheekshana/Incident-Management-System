@@ -350,3 +350,25 @@ model Setting {
   key   String @id
   value String
 }
+
+/// Append-only record of who did what (FR-33 extended to every module). No foreign keys on purpose: entries must
+/// survive the deletion or renaming of whatever they describe, so the actor is stored as a snapshot.
+model AuditLog {
+  id         String   @id @default(uuid())
+  at         DateTime @default(now())
+  actorId    String?
+  actorName  String?
+  actorEmail String?
+  action     String
+  summary    String
+  entityType String?
+  entityId   String?
+  companyIds String[]
+  ip         String?
+  metadata   Json?
+
+  @@index([at])
+  @@index([actorId, at])
+  @@index([action, at])
+  @@index([entityType, entityId])
+}

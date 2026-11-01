@@ -221,6 +221,31 @@ async function run() {
   r = await reporter.client.call('GET', '/incidents/export?format=csv', undefined, { raw: true });
   check('a plain User cannot export (403)', r.status === 403, String(r.status));
 
+  // ---------- audit log ----------
+  await sleep(800); // audit entries are written just after the response, so give them a moment
+  r = await reporter.client.call('GET', '/audit');
+  check('a plain User cannot read the audit log (403)', r.status === 403, String(r.status));
+  r = await admin.call('GET', '/audit?pageSize=100');
+  const auditActions = new Set((r.body.items ?? []).map((e) => e.action));
+  check('Super Admin reads the audit log', r.status === 200 && r.body.total > 0, JSON.stringify(r).slice(0, 200));
+  check('sign-ins and failed sign-ins are recorded', auditActions.has('auth.login') && auditActions.has('auth.login_failed'), [...auditActions].join(','));
+  check('user creation and incident activity are recorded', ['user.created', 'incident.created', 'incident.stage_changed', 'incident.commented'].every((a) => auditActions.has(a)), [...auditActions].join(','));
+  r = await admin.call('GET', `/audit?search=${incident.number}&pageSize=100`);
+  check('entries name the incident and the actor', r.body.items.length >= 5 && r.body.items.every((e) => e.summary.includes(incident.number) || e.entityId === incident.id) && r.body.items.some((e) => e.actorName === 'Reporter Ravi'), JSON.stringify(r.body.items.slice(0, 2)));
+  const stageEntry = r.body.items.find((e) => e.action === 'incident.stage_changed');
+  check('what changed is kept as short readable fields', stageEntry?.metadata?.changes?.stage !== undefined, JSON.stringify(stageEntry));
+  r = await admin.call('GET', '/audit?pageSize=100');
+  const leaked = JSON.stringify(r.body).includes(PASSWORD) || JSON.stringify(r.body).includes(TEMP_PASSWORD);
+  check('no password ever appears in the audit log', !leaked);
+  const absAdmin = await makeUser('Admin Abs', `adminabs${stamp}@t.local`, [abs.id], 'ADMIN');
+  r = await absAdmin.client.call('GET', '/audit?pageSize=100');
+  check('an Admin sees their own company\'s activity', r.status === 200 && r.body.items.some((e) => e.action === 'incident.created' && e.entityId === incident.id), JSON.stringify(r).slice(0, 200));
+  check('an Admin does not see another company\'s or system-wide entries', r.body.items.every((e) => e.companyIds.includes(abs.id) || e.actorId === absAdmin.id) && !r.body.items.some((e) => e.action === 'auth.login_failed' && e.companyIds.length === 0), 'saw out-of-scope entries');
+  r = await absAdmin.client.call('GET', `/audit?companyId=${dok.id}`);
+  check("an Admin cannot filter by another company (403)", r.status === 403, String(r.status));
+  r = await admin.call('GET', '/audit?pageSize=1000');
+  check('page size is capped (400)', r.status === 400, String(r.status));
+
   // ---------- configuration & session ----------
   r = await reporter.client.call('GET', '/settings');
   check('settings are Super Admin only (403)', r.status === 403, String(r.status));

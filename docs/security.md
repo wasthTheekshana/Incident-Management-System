@@ -12,6 +12,7 @@
 | Uploads (NFR-4) | Type from file *content* (magic bytes), extension must agree, size/count limits, random server-side names, stored outside web root, authorised streaming download with `nosniff` + forced attachment | `attachments/*` |
 | Export | Same visibility filter as the list; formula-injection neutralised (`= + - @`) | `incidents/incident-export.service.ts` |
 | Audit (FR-33) | Append-only history written in the same transaction as the change | `incidents/incident-history.service.ts` |
+| Audit log | Every state-changing request and every sign-in, failed sign-in, sign-out and password event is recorded with who, what, when and IP; secrets are never stored; no update or delete exists. Super Admin sees all, an Admin sees their companies and their own actions | `audit/*` |
 | Transport (NFR-1) | HSTS, CSP, `X-Frame-Options`, `nosniff` headers; production refuses to start with `COOKIE_SECURE=false` | `frontend/nginx.conf`, `config/env.validation.ts` |
 | Secrets | Env-only, validated at boot, `.env` git-ignored; seed never hardcodes a password | `.env.example` |
 | Containers | Non-root user, read-only root FS, all capabilities dropped, resource limits, internal network, only `web` published (loopback) | `docker-compose.prod.yml` |

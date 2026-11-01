@@ -159,7 +159,9 @@ export class IncidentsService {
   /** FR-35: counts by stage for incidents the user reported and incidents assigned to them. */
   async mine(user: AuthUser, companyId?: string) {
     if (companyId) this.access.assertCompanyAccess(user, companyId);
-    const scope: Prisma.IncidentWhereInput = companyId ? { companyId } : { companyId: { in: user.companyIds } };
+    const scope: Prisma.IncidentWhereInput = companyId
+      ? { companyId }
+      : this.access.isSuperAdmin(user) ? {} : { companyId: { in: user.companyIds } };
     const count = async (who: Prisma.IncidentWhereInput) => {
       const groups = await this.prisma.incident.groupBy({ by: ['stage'], where: { ...scope, ...who }, _count: true });
       return Object.fromEntries(groups.map((g) => [g.stage, g._count]));
