@@ -12,6 +12,8 @@ export interface Env {
   SMTP_USER?: string;
   SMTP_PASS?: string;
   SMTP_FROM: string;
+  /** Shared secret the reverse proxy adds to every request; required in production (see proxy-key.middleware.ts). */
+  PROXY_KEY?: string;
 }
 
 const required = ['DATABASE_URL', 'REDIS_URL', 'APP_URL', 'CORS_ORIGIN', 'SMTP_HOST', 'SMTP_FROM'] as const;
@@ -27,6 +29,10 @@ export function validateEnv(raw: Record<string, unknown>): Env {
   if (nodeEnv === 'production' && !cookieSecure) {
     throw new Error('COOKIE_SECURE must be true in production (NFR-1: HTTPS only)');
   }
+  const proxyKey = raw.PROXY_KEY ? String(raw.PROXY_KEY) : undefined;
+  if (nodeEnv === 'production' && (!proxyKey || proxyKey.length < 32)) {
+    throw new Error('PROXY_KEY (at least 32 characters) must be set in production');
+  }
   return {
     NODE_ENV: nodeEnv,
     PORT: Number(raw.PORT ?? 3000),
@@ -41,5 +47,6 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     SMTP_USER: raw.SMTP_USER ? String(raw.SMTP_USER) : undefined,
     SMTP_PASS: raw.SMTP_PASS ? String(raw.SMTP_PASS) : undefined,
     SMTP_FROM: String(raw.SMTP_FROM),
+    PROXY_KEY: proxyKey,
   };
 }

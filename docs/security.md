@@ -15,6 +15,7 @@
 | Audit log | Every state-changing request and every sign-in, failed sign-in, sign-out and password event is recorded with who, what, when and IP; secrets are never stored; no update or delete exists. Super Admin sees all, an Admin sees their companies and their own actions | `audit/*` |
 | Transport (NFR-1) | HSTS, CSP, `X-Frame-Options`, `nosniff` headers; production refuses to start with `COOKIE_SECURE=false` | `frontend/nginx.conf`, `config/env.validation.ts` |
 | Secrets | Env-only, validated at boot, `.env` git-ignored; seed never hardcodes a password | `.env.example` |
+| Shared-network isolation | The API shares `shared-nginx` with other apps, so it answers only requests carrying the Nginx-set `PROXY_KEY` header (403 otherwise); Nginx overwrites `X-Forwarded-For`, so client IPs and rate limits cannot be forged by neighbouring containers | `common/proxy-key.middleware.ts`, `deploy/dok-nginx-ims.conf` |
 | Containers | Non-root user, read-only root FS, all capabilities dropped, resource limits, internal network, only `web` published (loopback) | `docker-compose.prod.yml` |
 | Account enumeration | Forgot-password always answers identically; reset tokens are single-use, hashed, 30-minute expiry | `auth/auth.service.ts` |
 

@@ -49,10 +49,12 @@ cp .env.prod.example .env
 chmod 600 .env
 openssl rand -hex 24
 openssl rand -hex 24
+openssl rand -hex 32
 nano .env
 ```
 
-Fill in the two generated values for `POSTGRES_PASSWORD` and `REDIS_PASSWORD` (hex only, they go into a URL), the SMTP
+Fill in the first two generated values for `POSTGRES_PASSWORD` and `REDIS_PASSWORD` (hex only, they go into a URL), the
+third for `PROXY_KEY` (the secret the shared Nginx sends so only it can reach the API), the SMTP
 settings, and keep `APP_URL=https://ims.testsys.shop`. The API checks `APP_URL` as the only allowed browser origin.
 Never commit `.env` and never paste its contents into chat.
 
@@ -86,6 +88,9 @@ docker compose exec nginx nginx -t
 docker compose exec nginx nginx -s reload
 ```
 
+In PART 2, replace `PASTE_PROXY_KEY_HERE` with the same value as `PROXY_KEY` in `.env`. The API shares a Docker network with
+the other applications, so it refuses any request that does not carry this key (anything that bypasses Nginx gets 403).
+
 Issue the certificate (HTTP challenge, no DNS record or waiting needed for a single host name):
 
 ```
@@ -110,10 +115,12 @@ Let's Encrypt certificates last 90 days: set a calendar reminder for renewal.
 ```
 curl -s -o /dev/null -w "%{http_code}\n" https://ims.testsys.shop/api/health
 curl -s -o /dev/null -w "%{http_code}\n" https://ims.testsys.shop/api/auth/me
+docker exec ims-web wget -S -O /dev/null http://ims-api:3000/api/auth/me
 curl -sI https://ims.testsys.shop/ | head -n 12
 ```
 
-Expected: `200`, `401` (the API answers and nobody is signed in), and the security headers on the page. Then, in a browser:
+Expected: `200`, `401` (the API answers and nobody is signed in), the security headers on the page, and a `403 Forbidden`
+from the direct call (a container on the shared network cannot talk to the API without the key). Then, in a browser:
 padlock shown, sign in, change the password, report a test incident with an attachment, open the dashboard and the audit
 log. Confirm nothing is reachable except through Nginx:
 

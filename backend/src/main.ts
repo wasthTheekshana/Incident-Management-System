@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { proxyKeyMiddleware } from './common/proxy-key.middleware';
 import { Env } from './config/env.validation';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -17,6 +18,7 @@ async function bootstrap(): Promise<void> {
 
   app.set('trust proxy', 1); // behind the reverse proxy; needed for per-client rate limiting
   app.setGlobalPrefix('api');
+  app.use(proxyKeyMiddleware(config.get('PROXY_KEY', { infer: true })));
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({ origin: allowedOrigin, credentials: true });

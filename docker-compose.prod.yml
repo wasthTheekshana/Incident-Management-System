@@ -86,6 +86,8 @@ services:
           memory: 512M
           pids: 100
 
+  # The API shares the shared-nginx network with other applications, so it only answers requests that carry PROXY_KEY
+  # (added by the shared Nginx). Without it, a neighbouring container could forge client IPs or skip rate limits.
   api:
     build: ./backend
     container_name: ims-api
@@ -106,6 +108,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM}
+      PROXY_KEY: ${PROXY_KEY:?set PROXY_KEY}
     volumes:
       - /mnt/disks/data/documents/ims:/data/uploads
     depends_on:
