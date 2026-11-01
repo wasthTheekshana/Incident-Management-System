@@ -11,6 +11,7 @@ import { RolesGuard } from './common/roles.guard';
 import { SessionGuard } from './common/session.guard';
 import { CompaniesModule } from './companies/companies.module';
 import { Env, validateEnv } from './config/env.validation';
+import { HealthController } from './health/health.controller';
 import { IncidentsModule } from './incidents/incidents.module';
 import { MailModule } from './mail/mail.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -54,6 +55,7 @@ import { UsersModule } from './users/users.module';
     IncidentsModule,
     AttachmentsModule,
   ],
+  controllers: [HealthController],
   providers: [
     // Order matters: throttle, then authenticate, then authorise by role.
     { provide: APP_GUARD, useClass: ThrottlerGuard },

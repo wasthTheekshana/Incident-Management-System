@@ -11,8 +11,7 @@ cd "$(dirname "$0")/.."
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 DB_USER="${DB_USER:-cims}"
 DB_NAME="${DB_NAME:-cims}"
-PROJECT="${COMPOSE_PROJECT_NAME:-$(basename "$PWD" | tr '[:upper:]' '[:lower:]')}"
-UPLOADS_VOLUME="${UPLOADS_VOLUME:-${PROJECT}_uploads}"
+UPLOADS_DIR="${UPLOADS_DIR:-/mnt/disks/data/documents/ims}"
 HELPER_IMAGE="${HELPER_IMAGE:-postgres:16-alpine}"
 
 if [ "${1:-}" != "--yes" ] || [ -z "${2:-}" ]; then
@@ -34,9 +33,10 @@ echo "Restoring database from $dump"
 dc exec -T postgres pg_restore -U "$DB_USER" -d "$DB_NAME" --clean --if-exists --no-owner --exit-on-error < "$dump"
 
 if [ -n "$files" ]; then
-  echo "Restoring attachments from $files into volume $UPLOADS_VOLUME"
-  docker volume create "$UPLOADS_VOLUME" > /dev/null
-  MSYS_NO_PATHCONV=1 docker run --rm -i -v "$UPLOADS_VOLUME":/data --entrypoint tar "$HELPER_IMAGE" -C /data -xz < "$files"
+  echo "Restoring attachments from $files into $UPLOADS_DIR"
+  mkdir -p "$UPLOADS_DIR"
+  # Runs as root inside the helper so ownership can be set back to the API user (uid 1000) without sudo.
+  MSYS_NO_PATHCONV=1 docker run --rm -i -v "$UPLOADS_DIR":/data --user 0 --entrypoint sh "$HELPER_IMAGE" -c 'tar -C /data -xz && chown -R 1000:1000 /data' < "$files"
 fi
 
 echo "Starting api and web"

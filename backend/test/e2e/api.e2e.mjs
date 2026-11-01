@@ -221,6 +221,10 @@ async function run() {
   r = await reporter.client.call('GET', '/incidents/export?format=csv', undefined, { raw: true });
   check('a plain User cannot export (403)', r.status === 403, String(r.status));
 
+  // ---------- health ----------
+  r = await new Client().call('GET', '/health');
+  check('health endpoint answers without a session and reveals only status', r.status === 200 && JSON.stringify(r.body) === '{"status":"ok"}', JSON.stringify(r));
+
   // ---------- audit log ----------
   await sleep(800); // audit entries are written just after the response, so give them a moment
   r = await reporter.client.call('GET', '/audit');

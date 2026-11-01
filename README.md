@@ -41,9 +41,10 @@ CI (`.github/workflows/ci.yml`) runs all of the above plus type-checks and build
 
 ## Deploy and operate
 
-See [docs/operations.md](docs/operations.md): first deployment, HTTPS, daily backups and restore (`scripts/`),
-upgrades and monitoring. `docker-compose.prod.yml` and `.env.prod.example` define the stack. Put a TLS-terminating
-proxy (TLS ≥ 1.2) in front of `web`; migrations run as a separate step before the API starts.
+DOK shared server (ims.testsys.shop): [docs/deploy-dok-server.md](docs/deploy-dok-server.md), step by step.
+General runbook: [docs/operations.md](docs/operations.md): first deployment, HTTPS, daily backups and restore (`scripts/`),
+upgrades and monitoring. `docker-compose.prod.yml` and `.env.prod.example` define the stack. Nothing publishes a host port: the shared Nginx
+(TLS ≥ 1.2) reaches `web` and `api`; migrations run as a separate step before the API starts.
 
 Security controls: [docs/security.md](docs/security.md). Dependency advisories: [docs/dependency-audit.md](docs/dependency-audit.md).
 

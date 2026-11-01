@@ -2,12 +2,15 @@
 
 For whoever deploys and looks after CIMS. Security controls are in [security.md](security.md).
 
+> Deploying on the DOK shared server (ims.testsys.shop)? Follow [deploy-dok-server.md](deploy-dok-server.md): it has the
+> exact folders, Nginx blocks, certificate and update steps. The sections below describe the same stack in general terms.
+
 ## 1. First deployment
 
 Prerequisites: a Linux host with Docker + Docker Compose, a DNS name, a TLS certificate, and an SMTP account.
 
 ```bash
-git clone <repo> /opt/cims && cd /opt/cims
+git clone <repo> ~/ims-stack && cd ~/ims-stack
 cp .env.prod.example .env        # fill in every value; use long random passwords
 chmod 600 .env
 docker compose -f docker-compose.prod.yml build
@@ -27,13 +30,9 @@ Set `SEED_ADMIN_PASSWORD` too if you prefer to choose it yourself.
 
 ### HTTPS
 
-`web` listens on `127.0.0.1:8080` only. Put a TLS-terminating proxy in front (TLS 1.2+, NFR-1). Minimal Caddy example:
-
-```
-cims.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
+No container publishes a host port. The shared Nginx (TLS 1.2+, NFR-1) reaches `ims-web` and `ims-api` over the
+`shared-nginx` Docker network and sends `/api/` to the API and everything else to the web container (see
+`deploy/dok-nginx-ims.conf`). It must set `X-Forwarded-For` itself: the API trusts exactly one proxy hop.
 
 The API refuses to start in production with `COOKIE_SECURE=false`, and the compose file sets it to `true`; session
 cookies therefore only travel over HTTPS.
@@ -52,7 +51,7 @@ None of these need a redeploy (NFR-12).
 Schedule it daily and copy `./backups` **off the host** (a backup on the same disk is not a backup):
 
 ```
-15 1 * * *  cd /opt/cims && ./scripts/backup.sh >> /var/log/cims-backup.log 2>&1
+15 1 * * *  cd ~/ims-stack && ./scripts/backup.sh >> ~/ims-backup.log 2>&1
 ```
 
 Backups contain personal data: keep them owner-only (the script sets `umask 077`) and encrypt them in transit/at rest
@@ -100,5 +99,5 @@ Rollback: check out the previous tag, rebuild, and if the release included a mig
 ## 6. Known limits
 
 - SLA timers use calendar time (24 h), not working hours (SRS assumption; deferred).
-- Attachments are stored on a local Docker volume. For multi-host deployments move them to S3-compatible storage
+- Attachments are stored on the data disk (`/mnt/disks/data/documents/ims`). For multi-host deployments move them to S3-compatible storage
   (the storage code is isolated in `backend/src/attachments`).

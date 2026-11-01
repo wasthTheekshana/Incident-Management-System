@@ -8,7 +8,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
-BACKUP_DIR="${BACKUP_DIR:-./backups}"
+if [ -z "${BACKUP_DIR:-}" ]; then
+  if [ -d /mnt/disks/data/backups/ims ]; then BACKUP_DIR=/mnt/disks/data/backups/ims; else BACKUP_DIR=./backups; fi
+fi
 DB_USER="${DB_USER:-cims}"
 DB_NAME="${DB_NAME:-cims}"
 SCRATCH_DB="${DB_NAME}_restore_test"
