@@ -46,11 +46,16 @@ services:
       - "6379"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    # Started through `sh -c`, so the image entrypoint does not drop root by itself: run as redis (999:1000) explicitly.
+    # The data folder must be owned by 999:1000 (see docs/deploy-dok-server.md). Without `user`, cap_drop would break startup.
+    user: "999:1000"
     command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes"]
     volumes:
       - /mnt/disks/data/db/ims-redis:/data
     networks:
       - ims-net
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     deploy:
