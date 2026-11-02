@@ -34,12 +34,21 @@ df -h /mnt/disks/data
 git clone <repo-url> ~/ims-stack
 cd ~/ims-stack
 sudo mkdir -p /mnt/disks/data/db/ims /mnt/disks/data/db/ims-redis /mnt/disks/data/documents/ims /mnt/disks/data/backups/ims
-sudo chown -R 999:999 /mnt/disks/data/db/ims /mnt/disks/data/db/ims-redis
+sudo chown -R 70:70 /mnt/disks/data/db/ims
+sudo chown -R 999:1000 /mnt/disks/data/db/ims-redis
 sudo chown -R 1000:1000 /mnt/disks/data/documents/ims
 sudo chmod 700 /mnt/disks/data/backups/ims
 ```
 
-The API image runs as uid 1000 (the `node` user) and Postgres and Redis as uid 999, which is why the owners differ.
+Each folder must belong to the numeric uid the container runs as, never `chmod 777`. The alpine Postgres image runs as
+uid 70 (the Debian one is 999, do not mix them up), Redis as 999:1000 and the API as uid 1000 (the `node` user). Confirm
+them on the server before the first start:
+
+```
+docker run --rm postgres:16-alpine id postgres
+docker run --rm redis:7-alpine id redis
+docker run --rm node:24-alpine id node
+```
 
 ## 3. Create .env
 
@@ -166,12 +175,15 @@ git status
 git pull origin main
 git log -1 --oneline
 ./scripts/backup.sh
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml build api web migrate
+docker compose -f docker-compose.prod.yml run --rm migrate
+docker compose -f docker-compose.prod.yml up -d api web
 docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs --tail=50 api
 ```
 
-The migration container runs again on every `up`, so new tables are applied automatically before the API restarts.
+Only the app services are rebuilt; Postgres and Redis are not touched. The `run --rm migrate` line applies any new database
+migrations before the new API starts (it is a no-op when there are none).
 `.env` is not in git, so a pull never changes it. Then hard-refresh the browser. Occasionally run `docker image prune -f`
 to protect the boot disk.
 
