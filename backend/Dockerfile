@@ -1,4 +1,4 @@
-# Stage 1: production dependencies only. Installed fresh instead of `npm prune`, which re-resolves the whole tree
+#  Backend docker file Stage 1: production dependencies only. Installed fresh instead of `npm prune`, which re-resolves the whole tree
 # against the registry and stalls for many minutes with this lockfile.
 # npm ci rejects lockfiles written on another OS (npm/cli#4828: missing optional wasm packages pulled in by jest);
 # npm install still honours the pinned versions in package-lock.json and just fills in those optionals.

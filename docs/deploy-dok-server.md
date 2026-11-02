@@ -91,7 +91,17 @@ docker compose exec nginx nginx -s reload
 In PART 2, replace `PASTE_PROXY_KEY_HERE` with the same value as `PROXY_KEY` in `.env`. The API shares a Docker network with
 the other applications, so it refuses any request that does not carry this key (anything that bypasses Nginx gets 403).
 
-Issue the certificate (HTTP challenge, no DNS record or waiting needed for a single host name):
+First check whether a certificate for the domain already exists. `deploy/dok-nginx-ims.conf` points at
+`/etc/letsencrypt/live/testsys.shop/`, which only works if that certificate also covers `ims.testsys.shop` (a wildcard
+`*.testsys.shop`). If the second command lists `DNS:*.testsys.shop` (or `DNS:ims.testsys.shop`), skip the issue step below.
+If not, the browser will show a certificate warning, so issue one for `ims.testsys.shop` and point PART 2 at its folder.
+
+```
+ls ~/dok-stack/certbot/conf/live
+openssl x509 -in ~/dok-stack/certbot/conf/live/testsys.shop/fullchain.pem -noout -subject -ext subjectAltName -enddate
+```
+
+Only if no suitable certificate exists, issue one (HTTP challenge, no DNS record or waiting needed for a single host name):
 
 ```
 docker run --rm -v ~/dok-stack/certbot/conf:/etc/letsencrypt -v ~/dok-stack/certbot/www:/var/www/certbot certbot/certbot certonly --webroot -w /var/www/certbot --email wasath@doksolutions.lk --agree-tos --no-eff-email -d ims.testsys.shop
