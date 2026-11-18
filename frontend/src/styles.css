@@ -368,6 +368,17 @@ dl.facts dd { margin: 0; }
 
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 
+/* password checklist, temporary password, one-time reveal */
+.pw-block { margin-bottom: 14px; }
+.pw-rules { background: var(--surface-sunk); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; margin: 4px 0 14px; font-size: 13px; }
+.pw-rules ul { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.pw-rules li { display: flex; gap: 8px; align-items: baseline; color: var(--ink-3); }
+.pw-rules li .mark { width: 1em; text-align: center; font-weight: 700; flex: none; }
+.pw-rules li.ok { color: var(--ok); }
+.pw-rules li.bad { color: var(--danger); }
+.card.issued { border-color: var(--accent); background: var(--accent-soft); }
+.secret { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 17px; font-weight: 600; letter-spacing: 0.04em; padding: 6px 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); user-select: all; overflow-wrap: anywhere; }
+
 /* audit log */
 .nowrap { white-space: nowrap; }
 .small-text { font-size: 12.5px; }

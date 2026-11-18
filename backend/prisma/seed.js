@@ -51,7 +51,8 @@ async function main() {
 
   // `||` not `??`: an empty SEED_ADMIN_PASSWORD (as in .env.example) must never become the password.
   const provided = (process.env.SEED_ADMIN_PASSWORD ?? '').trim();
-  const password = provided || `${randomBytes(9).toString('base64url')}a1`;
+  // The generated one satisfies the password policy (lowercase, capital, number, special character, 10+ characters).
+  const password = provided || `${randomBytes(9).toString('base64url')}aA1!`;
   const companies = await prisma.company.findMany({ select: { id: true } });
   await prisma.user.create({
     data: {

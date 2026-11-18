@@ -89,7 +89,10 @@ model User {
   mustChangePassword  Boolean   @default(true)
   active              Boolean   @default(true)
   failedLoginAttempts Int       @default(0)
+  lastFailedLoginAt   DateTime?
+  /// Set to a far-future date when the account is locked until an admin unlocks it (see auth/password.policy.ts).
   lockedUntil         DateTime?
+  passwordChangedAt   DateTime  @default(now())
   lastLoginAt         DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -97,6 +100,7 @@ model User {
   companies          UserCompany[]
   sessions           Session[]
   resetTokens        PasswordResetToken[]
+  passwordHistory    PasswordHistory[]
   responsibleFor     Company[]            @relation("CompanyResponsible")
   backupFor          Company[]            @relation("CompanyBackup")
   reported           Incident[]           @relation("IncidentReporter")
@@ -371,4 +375,16 @@ model AuditLog {
   @@index([actorId, at])
   @@index([action, at])
   @@index([entityType, entityId])
+}
+
+/// The most recent password hashes of a user, so a password cannot be reused (see auth/password.policy.ts).
+model PasswordHistory {
+  id           String   @id @default(uuid())
+  userId       String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

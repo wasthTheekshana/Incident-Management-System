@@ -2,8 +2,8 @@
 
 | Concern | Control | Location |
 |---|---|---|
-| Passwords (NFR-2) | argon2id; ≥8 chars with letters + digits; random temporary passwords; forced change at first login | `auth/password.service.ts` |
-| Brute force (NFR-2) | 5 failures → 15-minute lock; per-route throttling (10/min on auth routes, 300/min global); lock/inactive/unknown all return the same message; dummy hash verify equalises timing | `auth/auth.service.ts`, `app.module.ts` |
+| Passwords (NFR-2) | argon2id; the company password policy ([password-policy.md](password-policy.md)): 10+ characters with lowercase, capital, number and special character, no part of the name or email, last 3 passwords cannot be reused, 90-day expiry, 1-day minimum age; temporary passwords (admin-typed or generated) must be changed at first login and are shown to the admin once, never stored in clear text | `auth/password.policy.ts`, `auth/password.service.ts` |
+| Brute force (NFR-2) | 3 failed sign-ins lock the account until an admin unlocks it (counter resets after 5 minutes); per-route throttling (10/min on auth routes, 300/min global); lock/inactive/unknown all return the same message; dummy hash verify equalises timing | `auth/auth.service.ts`, `app.module.ts` |
 | Sessions (FR-3) | 256-bit random token, only its SHA-256 stored; `HttpOnly`, `SameSite=Strict`, `Secure` in production; idle timeout (configurable) + 12 h absolute; revoked on deactivate / password change | `common/session.guard.ts` |
 | CSRF | SameSite=Strict cookie + Origin check on state-changing requests + JSON-only API | `main.ts` |
 | Access control (NFR-3) | Global session guard → role guard → `AccessPolicy` scoping every query; out-of-scope records return 404, not 403 | `common/*`, `incidents/incident-loader.service.ts` |

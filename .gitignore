@@ -8,3 +8,6 @@ storage/
 *.log
 coverage/
 .vite/
+
+# Internal policy document (shows internal system settings); keep it out of the public repo
+docs/Password Policies.pdf

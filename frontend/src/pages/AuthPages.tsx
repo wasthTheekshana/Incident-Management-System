@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { BrandMark } from '../components/Icon';
+import { PasswordChecklist, usePasswordPolicy } from '../components/PasswordChecklist';
+import { meetsPolicy } from '../lib/passwordPolicy';
 
 const messageOf = (e: unknown) => (e instanceof ApiError ? e.message : 'Something went wrong. Please try again.');
 
@@ -103,6 +105,7 @@ export function ForgotPasswordPage() {
 export function ResetPasswordPage() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
+  const policy = usePasswordPolicy();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
@@ -125,11 +128,11 @@ export function ResetPasswordPage() {
         <form onSubmit={submit}>
           <div className="field">
             <label htmlFor="pw">New password</label>
-            <input id="pw" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
-            <small className="muted">At least 8 characters, with letters and numbers.</small>
+            <input id="pw" type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
+          <PasswordChecklist password={password} />
           {error && <div className="error" role="alert">{error}</div>}
-          <button style={{ width: '100%' }}>Change password</button>
+          <button style={{ width: '100%' }} disabled={!meetsPolicy(password, {}, policy.minLength)}>Change password</button>
         </form>
       )}
     </AuthCard>
@@ -139,6 +142,7 @@ export function ResetPasswordPage() {
 export function ChangePasswordPage() {
   const { me, refresh } = useAuth();
   const navigate = useNavigate();
+  const policy = usePasswordPolicy();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -158,7 +162,7 @@ export function ChangePasswordPage() {
 
   return (
     <AuthCard title="Change password">
-      {me?.mustChangePassword && <p>You must set a new password before continuing.</p>}
+      {me?.mustChangePassword && <p>Choose your own password before continuing. The one you were given is temporary.</p>}
       <form onSubmit={submit}>
         <div className="field">
           <label htmlFor="cur">Current password</label>
@@ -166,15 +170,21 @@ export function ChangePasswordPage() {
         </div>
         <div className="field">
           <label htmlFor="new">New password</label>
-          <input id="new" type="password" autoComplete="new-password" required minLength={8} value={next} onChange={(e) => setNext(e.target.value)} />
-          <small className="muted">At least 8 characters, with letters and numbers.</small>
+          <input id="new" type="password" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
         </div>
         <div className="field">
           <label htmlFor="conf">Confirm new password</label>
-          <input id="conf" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          <input id="conf" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} aria-invalid={confirm.length > 0 && next !== confirm} />
+          {confirm.length > 0 && next !== confirm && <small className="error">The two passwords do not match.</small>}
         </div>
+        <PasswordChecklist password={next} identity={{ email: me?.email, name: me?.name }} />
         {error && <div className="error" role="alert">{error}</div>}
-        <button style={{ width: '100%' }}>Change password</button>
+        <button
+          style={{ width: '100%' }}
+          disabled={!meetsPolicy(next, { email: me?.email, name: me?.name }, policy.minLength) || next !== confirm}
+        >
+          Change password
+        </button>
       </form>
       {!me?.mustChangePassword && <p><Link to="/">Cancel</Link></p>}
     </AuthCard>

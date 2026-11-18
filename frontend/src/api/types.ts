@@ -30,7 +30,14 @@ export interface UserRow {
   role: Role;
   active: boolean;
   lastLoginAt: string | null;
+  /** Locked after repeated wrong passwords; stays locked until an admin unlocks it. */
+  locked: boolean;
   companies: CompanyRef[];
+}
+
+/** Returned once when a user is created, so the admin can hand over the temporary password. */
+export interface CreatedUser extends UserRow {
+  temporaryPassword: string;
 }
 
 export interface TemplateField {

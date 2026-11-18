@@ -7,10 +7,9 @@ import { Env } from '../config/env.validation';
 import { hashToken } from '../common/session.guard';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { afterFailedLogin, canChangePassword, isLocked, isPasswordExpired, PASSWORD_POLICY } from './password.policy';
 import { PasswordService } from './password.service';
 
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_MINUTES = 15;
 const SESSION_MAX_HOURS = 12;
 const RESET_TOKEN_MINUTES = 30;
 const INVALID_CREDENTIALS = 'Invalid email or password';
@@ -50,25 +49,34 @@ export class AuthService {
     }
 
     // Locked and inactive accounts get the same message as bad credentials (no state disclosure).
-    if (!user.active || (user.lockedUntil && user.lockedUntil > new Date())) {
+    if (!user.active || isLocked(user, new Date())) {
       await failed(user.active ? 'account locked' : 'account inactive', user.id);
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
     if (!(await this.passwords.verify(user.passwordHash, password))) {
-      const locked = await this.registerFailure(user.id, user.failedLoginAttempts);
+      const locked = await this.registerFailure(user);
       await failed(locked ? 'wrong password, account now locked' : 'wrong password', user.id);
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
+    // Maximum password age: an expired password must be replaced before anything else can be done.
+    const now = new Date();
+    const expired = !user.mustChangePassword && isPasswordExpired(user.passwordChangedAt, now);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
+      data: {
+        failedLoginAttempts: 0,
+        lastFailedLoginAt: null,
+        lockedUntil: null,
+        lastLoginAt: now,
+        ...(expired && { mustChangePassword: true }),
+      },
     });
     await this.audit.record({
       actor: { id: user.id, name: user.name, email: user.email },
       action: 'auth.login',
-      summary: 'Signed in',
+      summary: expired ? 'Signed in (password expired, change required)' : 'Signed in',
       entityType: 'user',
       entityId: user.id,
       companyIds: await this.companyIdsOf(user.id),
@@ -99,6 +107,12 @@ export class AuthService {
     }
     if (await this.passwords.verify(user.passwordHash, next)) {
       throw new BadRequestException('New password must differ from the current password');
+    }
+    // Minimum password age. Not applied when the change is forced (first login, admin reset, expiry).
+    if (!user.mustChangePassword && !canChangePassword(user.passwordChangedAt, new Date())) {
+      throw new BadRequestException(
+        `You changed your password less than ${PASSWORD_POLICY.minAgeDays} day ago. Try again later, or ask an admin to reset it.`,
+      );
     }
     await this.setPassword(userId, next, sessionId);
     await this.audit.record({
@@ -163,34 +177,57 @@ export class AuthService {
     return rows.map((r) => r.companyId);
   }
 
-  /** Sets a new password, clears forced-change/lock state and ends every other session of the user. */
+  /**
+   * Sets a new password chosen by the user: checks the policy and the password history, clears forced-change and
+   * lock state, remembers the password and ends every other session of the user.
+   */
   async setPassword(userId: string, plain: string, keepSessionId?: string): Promise<void> {
-    this.passwords.assertPolicy(plain);
-    await this.prisma.$transaction([
-      this.prisma.user.update({
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { name: true, email: true, passwordHash: true },
+    });
+    this.passwords.assertPolicy(plain, { name: user.name, email: user.email });
+    await this.passwords.assertNotReused(userId, plain, user.passwordHash);
+
+    const passwordHash = await this.passwords.hash(plain);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
         where: { id: userId },
         data: {
-          passwordHash: await this.passwords.hash(plain),
+          passwordHash,
+          passwordChangedAt: new Date(),
           mustChangePassword: false,
           failedLoginAttempts: 0,
+          lastFailedLoginAt: null,
           lockedUntil: null,
         },
-      }),
-      this.prisma.session.deleteMany({ where: { userId, ...(keepSessionId && { id: { not: keepSessionId } }) } }),
-    ]);
+      });
+      await tx.session.deleteMany({ where: { userId, ...(keepSessionId && { id: { not: keepSessionId } }) } });
+      await this.passwords.remember(tx, userId, passwordHash);
+    });
   }
 
-  private async registerFailure(userId: string, previousAttempts: number): Promise<boolean> {
-    const attempts = previousAttempts + 1;
-    const lock = attempts >= MAX_FAILED_ATTEMPTS;
+  /** Counts a failed sign-in and locks the account (until an admin unlocks it) when the threshold is reached. */
+  private async registerFailure(user: { id: string; name: string; email: string; failedLoginAttempts: number; lastFailedLoginAt: Date | null }): Promise<boolean> {
+    const outcome = afterFailedLogin(user, new Date());
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: user.id },
       data: {
-        failedLoginAttempts: lock ? 0 : attempts,
-        lockedUntil: lock ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
+        failedLoginAttempts: outcome.failedLoginAttempts,
+        lastFailedLoginAt: outcome.lastFailedLoginAt,
+        lockedUntil: outcome.lockedUntil,
       },
     });
-    return lock;
+    if (outcome.locked) {
+      await this.audit.record({
+        action: 'auth.account_locked',
+        summary: `Account locked after ${PASSWORD_POLICY.lockoutThreshold} failed sign-ins: ${user.email}`,
+        entityType: 'user',
+        entityId: user.id,
+        companyIds: await this.companyIdsOf(user.id),
+      });
+    }
+    return outcome.locked;
   }
 
   private async createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {

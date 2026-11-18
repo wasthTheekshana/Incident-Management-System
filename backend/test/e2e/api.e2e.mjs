@@ -54,7 +54,9 @@ const setPassword = async (email, password, mustChangePassword = false) =>
       passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
       mustChangePassword,
       failedLoginAttempts: 0,
+      lastFailedLoginAt: null,
       lockedUntil: null,
+      passwordChangedAt: new Date(Date.now() - 2 * 86_400_000),
     },
   });
 
@@ -78,6 +80,12 @@ async function run() {
   check('forced password change blocks other routes (403)', r.status === 403, JSON.stringify(r));
   r = await admin.call('POST', '/auth/change-password', { currentPassword: TEMP_PASSWORD, newPassword: 'short' });
   check('weak new password rejected (400)', r.status === 400, JSON.stringify(r));
+  r = await admin.call('POST', '/auth/change-password', { currentPassword: TEMP_PASSWORD, newPassword: 'alllowercase123' });
+  check('a password missing a capital letter and a special character is rejected (400) and says why', r.status === 400 && /capital letter/.test(r.body.message) && /special character/.test(r.body.message), JSON.stringify(r));
+  r = await admin.call('POST', '/auth/change-password', { currentPassword: TEMP_PASSWORD, newPassword: 'Admin-Passw0rd-x' });
+  check('a password containing the account name is rejected (400)', r.status === 400 && /name or email/.test(r.body.message), JSON.stringify(r));
+  r = await admin.call('POST', '/auth/change-password', { currentPassword: TEMP_PASSWORD, newPassword: TEMP_PASSWORD });
+  check('the new password must differ from the temporary one (400)', r.status === 400, JSON.stringify(r));
   r = await admin.call('POST', '/auth/change-password', { currentPassword: TEMP_PASSWORD, newPassword: PASSWORD });
   check('password change succeeds', r.status === 204, JSON.stringify(r));
   r = await admin.call('GET', '/companies');
@@ -86,9 +94,9 @@ async function run() {
   const dok = r.body.find((c) => c.code === 'DOK');
 
   const victim = new Client();
-  for (let i = 0; i < 5; i++) await victim.call('POST', '/auth/login', { email: ADMIN_EMAIL, password: `nope-nope-${i}x1` });
+  for (let i = 0; i < 3; i++) await victim.call('POST', '/auth/login', { email: ADMIN_EMAIL, password: `nope-nope-${i}x1` });
   r = await victim.call('POST', '/auth/login', { email: ADMIN_EMAIL, password: PASSWORD });
-  check('account locks after 5 failures (even the right password is refused)', r.status === 401, JSON.stringify(r));
+  check('account locks after 3 failures (even the right password is refused)', r.status === 401, JSON.stringify(r));
   await setPassword(ADMIN_EMAIL, PASSWORD);
   await sleep(AUTH_THROTTLE_WINDOW_MS); // let the login throttle window reset before the next logins
 
@@ -221,6 +229,81 @@ async function run() {
   r = await reporter.client.call('GET', '/incidents/export?format=csv', undefined, { raw: true });
   check('a plain User cannot export (403)', r.status === 403, String(r.status));
 
+  // ---------- password policy: temporary passwords, forced change, history, age, lockout ----------
+  await sleep(AUTH_THROTTLE_WINDOW_MS); // start these sign-ins in a fresh throttle window
+  r = await new Client().call('GET', '/auth/password-policy');
+  check('the policy endpoint is public and states the enforced numbers', r.status === 200 && r.body.minLength === 10 && r.body.historyCount === 3 && r.body.maxAgeDays === 90 && r.body.minAgeDays === 1 && r.body.lockoutThreshold === 3, JSON.stringify(r));
+
+  r = await admin.call('POST', '/users', { name: 'Policy Pat', email: `pat${stamp}@t.local`, role: 'USER', companyIds: [abs.id], temporaryPassword: 'weakpass' });
+  check('an admin-typed temporary password must meet the policy (400)', r.status === 400 && /policy/.test(r.body.message), JSON.stringify(r));
+  r = await admin.call('POST', '/users', { name: 'Policy Pat', email: `pat${stamp}@t.local`, role: 'USER', companyIds: [abs.id], temporaryPassword: 'Tmp-Passw0rd-9x' });
+  check('an admin can set the temporary password; it is shown once in the response', r.status === 201 && r.body.temporaryPassword === 'Tmp-Passw0rd-9x', JSON.stringify(r));
+  const pat = { id: r.body.id, email: `pat${stamp}@t.local`, client: new Client() };
+  r = await admin.call('POST', '/users', { name: 'Gen Gina', email: `gina${stamp}@t.local`, role: 'USER', companyIds: [abs.id] });
+  check('without one, the system generates a temporary password that meets the policy', r.status === 201 && typeof r.body.temporaryPassword === 'string' && r.body.temporaryPassword.length >= 10 && /[a-z]/.test(r.body.temporaryPassword) && /[A-Z]/.test(r.body.temporaryPassword) && /[0-9]/.test(r.body.temporaryPassword) && /[^A-Za-z0-9]/.test(r.body.temporaryPassword), JSON.stringify(r));
+  const gina = { id: r.body.id, email: `gina${stamp}@t.local`, temp: r.body.temporaryPassword, client: new Client() };
+  r = await gina.client.call('POST', '/auth/login', { email: gina.email, password: gina.temp });
+  check('a user can sign in with the generated temporary password', r.status === 200, JSON.stringify(r));
+
+  r = await pat.client.call('POST', '/auth/login', { email: pat.email, password: 'Tmp-Passw0rd-9x' });
+  check('a user can sign in with the admin-typed temporary password', r.status === 200, JSON.stringify(r));
+  r = await pat.client.call('GET', '/companies');
+  check('until the password is changed every other route is blocked (403)', r.status === 403, JSON.stringify(r));
+  r = await pat.client.call('POST', '/auth/change-password', { currentPassword: 'Tmp-Passw0rd-9x', newPassword: 'Policy-Passw0rd-9' });
+  check("a new password containing the user's name is rejected (400)", r.status === 400 && /name or email/.test(r.body.message), JSON.stringify(r));
+  r = await pat.client.call('POST', '/auth/change-password', { currentPassword: 'Tmp-Passw0rd-9x', newPassword: 'Fresh-Passw0rd-1x' });
+  check('the user sets a compliant password at first login (204)', r.status === 204, JSON.stringify(r));
+  r = await pat.client.call('GET', '/companies');
+  check('after the change the account works normally', r.status === 200, JSON.stringify(r));
+  r = await pat.client.call('POST', '/auth/change-password', { currentPassword: 'Fresh-Passw0rd-1x', newPassword: 'Fresh-Passw0rd-2x' });
+  check('a second voluntary change within a day is refused (minimum password age)', r.status === 400 && /less than 1 day/.test(r.body.message), JSON.stringify(r));
+
+  r = await admin.call('POST', `/users/${pat.id}/reset-password`);
+  check('an admin reset returns a generated temporary password that meets the policy', r.status === 200 && /[A-Z]/.test(r.body.temporaryPassword) && /[^A-Za-z0-9]/.test(r.body.temporaryPassword), JSON.stringify(r));
+  const patTemp2 = r.body.temporaryPassword;
+  r = await pat.client.call('POST', '/auth/login', { email: pat.email, password: patTemp2 });
+  check('the user signs in with the reset password and must change it again', r.status === 200, JSON.stringify(r));
+  r = await pat.client.call('POST', '/auth/change-password', { currentPassword: patTemp2, newPassword: 'Fresh-Passw0rd-1x' });
+  check('a previously used password cannot be reused (history)', r.status === 400 && /reuse/.test(r.body.message), JSON.stringify(r));
+  r = await pat.client.call('POST', '/auth/change-password', { currentPassword: patTemp2, newPassword: 'Fresh-Passw0rd-3x' });
+  check('a different compliant password is accepted', r.status === 204, JSON.stringify(r));
+
+  r = await admin.call('POST', `/users/${pat.id}/reset-password`, { temporaryPassword: 'weakpass' });
+  check('an admin-typed reset password must meet the policy (400)', r.status === 400, JSON.stringify(r));
+
+  // lockout: 3 wrong passwords lock the account until an admin unlocks it
+  const larryEmail = `larry${stamp}@t.local`;
+  const lark = await makeUser('Lock Larry', larryEmail, [abs.id]);
+  const attacker = new Client();
+  for (let i = 0; i < 3; i++) await attacker.call('POST', '/auth/login', { email: larryEmail, password: `Wrong-Guess-${i}x` });
+  r = await attacker.call('POST', '/auth/login', { email: larryEmail, password: PASSWORD });
+  check('3 wrong passwords lock the account; the right password is then refused', r.status === 401, JSON.stringify(r));
+  r = await admin.call('GET', '/users');
+  check('the user list shows the account as locked', r.body.find((u) => u.id === lark.id)?.locked === true, JSON.stringify(r.body.find((u) => u.id === lark.id)));
+  r = await reporter.client.call('POST', `/users/${lark.id}/unlock`);
+  check('a plain User cannot unlock accounts (403)', r.status === 403, String(r.status));
+  r = await admin.call('POST', `/users/${lark.id}/unlock`);
+  check('an admin unlocks the account (204)', r.status === 204, JSON.stringify(r));
+  await sleep(AUTH_THROTTLE_WINDOW_MS); // fresh throttle window for the remaining sign-ins
+  r = await attacker.call('POST', '/auth/login', { email: larryEmail, password: PASSWORD });
+  check('after the unlock the user can sign in again', r.status === 200, JSON.stringify(r));
+
+  // the failure counter starts again after the reset window (5 minutes)
+  const patient = new Client();
+  for (let i = 0; i < 2; i++) await patient.call('POST', '/auth/login', { email: larryEmail, password: `Wrong-Guess-${i}x` });
+  await prisma.user.update({ where: { email: larryEmail }, data: { lastFailedLoginAt: new Date(Date.now() - 6 * 60_000) } });
+  await patient.call('POST', '/auth/login', { email: larryEmail, password: 'Wrong-Guess-9x' });
+  r = await patient.call('POST', '/auth/login', { email: larryEmail, password: PASSWORD });
+  check('failures older than the reset window do not count towards the lock', r.status === 200, JSON.stringify(r));
+
+  // maximum password age: after 90 days the password must be replaced before anything else works
+  await prisma.user.update({ where: { email: gina.email }, data: { mustChangePassword: false, passwordChangedAt: new Date(Date.now() - 91 * 86_400_000) } });
+  const aged = new Client();
+  r = await aged.call('POST', '/auth/login', { email: gina.email, password: gina.temp });
+  check('an expired password still signs in but forces a change', r.status === 200, JSON.stringify(r));
+  r = await aged.call('GET', '/companies');
+  check('and blocks every other route until it is changed (403)', r.status === 403, JSON.stringify(r));
+
   // ---------- health ----------
   r = await new Client().call('GET', '/health');
   check('health endpoint answers without a session and reveals only status', r.status === 200 && JSON.stringify(r.body) === '{"status":"ok"}', JSON.stringify(r));
@@ -230,10 +313,11 @@ async function run() {
   r = await reporter.client.call('GET', '/audit');
   check('a plain User cannot read the audit log (403)', r.status === 403, String(r.status));
   r = await admin.call('GET', '/audit?pageSize=100');
-  const auditActions = new Set((r.body.items ?? []).map((e) => e.action));
+  const auditHas = async (action) => ((await admin.call('GET', `/audit?action=${action}&pageSize=1`)).body.total ?? 0) > 0;
   check('Super Admin reads the audit log', r.status === 200 && r.body.total > 0, JSON.stringify(r).slice(0, 200));
-  check('sign-ins and failed sign-ins are recorded', auditActions.has('auth.login') && auditActions.has('auth.login_failed'), [...auditActions].join(','));
-  check('user creation and incident activity are recorded', ['user.created', 'incident.created', 'incident.stage_changed', 'incident.commented'].every((a) => auditActions.has(a)), [...auditActions].join(','));
+  check('sign-ins and failed sign-ins are recorded', (await auditHas('auth.login')) && (await auditHas('auth.login_failed')), 'missing');
+  check('user creation and incident activity are recorded', (await Promise.all(['user.created', 'incident.created', 'incident.stage_changed', 'incident.commented'].map(auditHas))).every(Boolean), 'missing');
+  check('lockouts and admin unlocks are recorded', (await auditHas('auth.account_locked')) && (await auditHas('user.unlocked')), 'missing');
   r = await admin.call('GET', `/audit?search=${incident.number}&pageSize=100`);
   check('entries name the incident and the actor', r.body.items.length >= 5 && r.body.items.every((e) => e.summary.includes(incident.number) || e.entityId === incident.id) && r.body.items.some((e) => e.actorName === 'Reporter Ravi'), JSON.stringify(r.body.items.slice(0, 2)));
   const stageEntry = r.body.items.find((e) => e.action === 'incident.stage_changed');
@@ -242,7 +326,7 @@ async function run() {
   const leaked = JSON.stringify(r.body).includes(PASSWORD) || JSON.stringify(r.body).includes(TEMP_PASSWORD);
   check('no password ever appears in the audit log', !leaked);
   const absAdmin = await makeUser('Admin Abs', `adminabs${stamp}@t.local`, [abs.id], 'ADMIN');
-  r = await absAdmin.client.call('GET', '/audit?pageSize=100');
+  r = await absAdmin.client.call('GET', `/audit?search=${incident.number}&pageSize=100`);
   check('an Admin sees their own company\'s activity', r.status === 200 && r.body.items.some((e) => e.action === 'incident.created' && e.entityId === incident.id), JSON.stringify(r).slice(0, 200));
   check('an Admin does not see another company\'s or system-wide entries', r.body.items.every((e) => e.companyIds.includes(abs.id) || e.actorId === absAdmin.id) && !r.body.items.some((e) => e.action === 'auth.login_failed' && e.companyIds.length === 0), 'saw out-of-scope entries');
   r = await absAdmin.client.call('GET', `/audit?companyId=${dok.id}`);

@@ -38,6 +38,7 @@ export const ROUTE_LABELS: Record<string, RouteLabel> = {
   'POST /users': { action: 'user.created', label: 'Created user', entity: 'user' },
   'PATCH /users/:id': { action: 'user.updated', label: 'Updated user', entity: 'user' },
   'POST /users/:id/reset-password': { action: 'user.password_reset', label: 'Reset password for', entity: 'user' },
+  'POST /users/:id/unlock': { action: 'user.unlocked', label: 'Unlocked account of', entity: 'user' },
   'POST /companies': { action: 'company.created', label: 'Created company', entity: 'company' },
   'PATCH /companies/:id': { action: 'company.updated', label: 'Updated company', entity: 'company' },
   'PUT /companies/:id/responsible-people': { action: 'company.responsible_people_set', label: 'Set responsible people for', entity: 'company' },

@@ -31,6 +31,15 @@ export class CreateUserDto {
 
   @IsArray() @ArrayMinSize(1) @ArrayUnique() @IsUUID('all', { each: true })
   companyIds: string[];
+
+  /** Optional: when left out the system generates a compliant one. Either way the user must change it at first login. */
+  @IsOptional() @IsString() @MaxLength(128)
+  temporaryPassword?: string;
+}
+
+export class ResetUserPasswordDto {
+  @IsOptional() @IsString() @MaxLength(128)
+  temporaryPassword?: string;
 }
 
 export class UpdateUserDto {

@@ -8,6 +8,7 @@ import { AllowPasswordChangePending, CurrentUser, Public } from '../common/decor
 import { SESSION_COOKIE } from '../common/session.guard';
 import { Env } from '../config/env.validation';
 import { AuthService } from './auth.service';
+import { PASSWORD_POLICY } from './password.policy';
 
 class LoginDto {
   @IsEmail() @MaxLength(254) email: string;
@@ -59,6 +60,14 @@ export class AuthController {
   async logout(@CurrentUser() user: AuthUser, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(user, req.ip);
     res.clearCookie(SESSION_COOKIE, { path: '/' });
+  }
+
+  /** The rules the server enforces, so the screens show exactly the same numbers. Contains nothing secret. */
+  @Public()
+  @Get('password-policy')
+  passwordPolicy() {
+    const { minLength, historyCount, maxAgeDays, minAgeDays, lockoutThreshold } = PASSWORD_POLICY;
+    return { minLength, historyCount, maxAgeDays, minAgeDays, lockoutThreshold };
   }
 
   @AllowPasswordChangePending()

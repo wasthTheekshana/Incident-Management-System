@@ -37,6 +37,15 @@ No container publishes a host port. The shared Nginx (TLS 1.2+, NFR-1) reaches `
 The API refuses to start in production with `COOKIE_SECURE=false`, and the compose file sets it to `true`; session
 cookies therefore only travel over HTTPS.
 
+### Locked accounts
+
+An account locks after 3 wrong passwords and stays locked until an admin unlocks it from the Users screen (see
+[password-policy.md](password-policy.md)). If the only Super Admin is locked, unlock it from the server:
+
+```
+docker compose -f docker-compose.prod.yml run --rm api node prisma/unlock.js you@company.com
+```
+
 ## 2. Configuration that lives in the app (Super Admin screens)
 
 Priority/SLA times, notification recipients and email text, root-cause lists, session idle timeout, attachment limits.

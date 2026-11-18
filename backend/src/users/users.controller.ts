@@ -3,7 +3,7 @@ import { Role } from '@prisma/client';
 import { IsOptional, IsUUID } from 'class-validator';
 import { AuthUser } from '../common/auth.types';
 import { CurrentUser, Roles } from '../common/decorators';
-import { CreateUserDto, UpdateUserDto } from './users.dto';
+import { CreateUserDto, ResetUserPasswordDto, UpdateUserDto } from './users.dto';
 import { UsersService } from './users.service';
 
 class ListUsersQuery {
@@ -31,9 +31,15 @@ export class UsersController {
     return this.users.update(actor, id, dto);
   }
 
-  @HttpCode(204)
+  @HttpCode(200)
   @Post(':id/reset-password')
-  resetPassword(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.users.adminResetPassword(actor, id);
+  resetPassword(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ResetUserPasswordDto) {
+    return this.users.adminResetPassword(actor, id, dto);
+  }
+
+  @HttpCode(204)
+  @Post(':id/unlock')
+  unlock(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.users.unlock(actor, id);
   }
 }

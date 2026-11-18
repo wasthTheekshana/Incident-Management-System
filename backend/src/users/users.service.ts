@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
+import { isLocked } from '../auth/password.policy';
 import { PasswordService } from '../auth/password.service';
 import { AccessPolicy } from '../common/access-policy.service';
 import { AuthUser } from '../common/auth.types';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateUserDto, UpdateUserDto } from './users.dto';
+import { CreateUserDto, ResetUserPasswordDto, UpdateUserDto } from './users.dto';
 
 const USER_VIEW = {
   id: true,
@@ -15,12 +16,18 @@ const USER_VIEW = {
   role: true,
   active: true,
   lastLoginAt: true,
+  lockedUntil: true,
   companies: { select: { company: { select: { id: true, name: true, code: true } } } },
 } satisfies Prisma.UserSelect;
 
 type UserRow = Prisma.UserGetPayload<{ select: typeof USER_VIEW }>;
 
-const present = ({ companies, ...rest }: UserRow) => ({ ...rest, companies: companies.map((c) => c.company) });
+/** The lock date itself is an implementation detail; the screen only needs to know whether the account is locked. */
+const present = ({ companies, lockedUntil, ...rest }: UserRow) => ({
+  ...rest,
+  locked: isLocked({ lockedUntil }, new Date()),
+  companies: companies.map((c) => c.company),
+});
 
 @Injectable()
 export class UsersService {
@@ -51,22 +58,31 @@ export class UsersService {
     }
     await this.assertAssignableCompanies(actor, dto.companyIds);
 
-    const tempPassword = this.passwords.generateTemporary();
+    // The admin may choose the temporary password (it must satisfy the policy) or leave it to the system.
+    const email = dto.email.trim().toLowerCase();
+    if (dto.temporaryPassword) this.passwords.assertPolicy(dto.temporaryPassword, { name: dto.name, email });
+    const tempPassword = dto.temporaryPassword ?? this.passwords.generateTemporary();
+    const passwordHash = await this.passwords.hash(tempPassword);
     try {
-      const created = await this.prisma.user.create({
-        data: {
-          name: dto.name.trim(),
-          email: dto.email.trim().toLowerCase(),
-          phone: dto.phone,
-          role: dto.role,
-          passwordHash: await this.passwords.hash(tempPassword),
-          mustChangePassword: true,
-          companies: { create: dto.companyIds.map((companyId) => ({ companyId })) },
-        },
-        select: USER_VIEW,
+      const created = await this.prisma.$transaction(async (tx) => {
+        const row = await tx.user.create({
+          data: {
+            name: dto.name.trim(),
+            email,
+            phone: dto.phone,
+            role: dto.role,
+            passwordHash,
+            mustChangePassword: true,
+            companies: { create: dto.companyIds.map((companyId) => ({ companyId })) },
+          },
+          select: USER_VIEW,
+        });
+        await this.passwords.remember(tx, row.id, passwordHash);
+        return row;
       });
       await this.sendWelcome(created.email, tempPassword);
-      return present(created);
+      // Returned once so the admin can hand it over when email is unavailable. It is never stored in clear text.
+      return { ...present(created), temporaryPassword: tempPassword };
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('A user with this email already exists');
@@ -101,22 +117,41 @@ export class UsersService {
     return present(updated);
   }
 
-  async adminResetPassword(actor: AuthUser, id: string): Promise<void> {
+  /** Gives the user a new temporary password (chosen by the admin or generated) and forces a change at next login. */
+  async adminResetPassword(actor: AuthUser, id: string, dto: ResetUserPasswordDto = {}): Promise<{ temporaryPassword: string }> {
     const target = await this.getManageable(actor, id);
-    const tempPassword = this.passwords.generateTemporary();
-    await this.prisma.$transaction([
-      this.prisma.user.update({
+    if (dto.temporaryPassword) {
+      this.passwords.assertPolicy(dto.temporaryPassword, { name: target.name, email: target.email });
+      await this.passwords.assertNotReused(id, dto.temporaryPassword, target.passwordHash);
+    }
+    const tempPassword = dto.temporaryPassword ?? this.passwords.generateTemporary();
+    const passwordHash = await this.passwords.hash(tempPassword);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
         where: { id },
         data: {
-          passwordHash: await this.passwords.hash(tempPassword),
+          passwordHash,
+          passwordChangedAt: new Date(),
           mustChangePassword: true,
           failedLoginAttempts: 0,
+          lastFailedLoginAt: null,
           lockedUntil: null,
         },
-      }),
-      this.prisma.session.deleteMany({ where: { userId: id } }),
-    ]);
+      });
+      await tx.session.deleteMany({ where: { userId: id } });
+      await this.passwords.remember(tx, id, passwordHash);
+    });
     await this.sendWelcome(target.email, tempPassword);
+    return { temporaryPassword: tempPassword };
+  }
+
+  /** Account lockout lasts until an administrator unlocks it (see auth/password.policy.ts). */
+  async unlock(actor: AuthUser, id: string): Promise<void> {
+    await this.getManageable(actor, id);
+    await this.prisma.user.update({
+      where: { id },
+      data: { lockedUntil: null, failedLoginAttempts: 0, lastFailedLoginAt: null },
+    });
   }
 
   /** Existence and scope are checked together so out-of-scope users look identical to missing ones. */

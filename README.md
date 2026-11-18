@@ -46,7 +46,7 @@ General runbook: [docs/operations.md](docs/operations.md): first deployment, HTT
 upgrades and monitoring. `docker-compose.prod.yml` and `.env.prod.example` define the stack. Nothing publishes a host port: the shared Nginx
 (TLS ≥ 1.2) reaches `web` and `api`; migrations run as a separate step before the API starts.
 
-Security controls: [docs/security.md](docs/security.md). Dependency advisories: [docs/dependency-audit.md](docs/dependency-audit.md).
+Security controls: [docs/security.md](docs/security.md). Password and lockout rules: [docs/password-policy.md](docs/password-policy.md). Dependency advisories: [docs/dependency-audit.md](docs/dependency-audit.md).
 
 ## Layout
 
